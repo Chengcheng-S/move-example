@@ -3,10 +3,10 @@ compiled_package_info:
   package_name: move-example
   address_alias_instantiation:
     std: "00000000000000000000000000000001"
-  source_digest: 33B07D37C3E33E0F388FCF1F5B87E683A4EAC2AAFD1DB2D0F0D83E27CD4C3F08
+  source_digest: C86DF085EE2935AEB216CFB2920733524D1DA9E245B8119FF4570673CEE5CB94
   build_flags:
-    dev_mode: false
-    test_mode: false
+    dev_mode: true
+    test_mode: true
     generate_docs: false
     generate_abis: false
     install_dir: ~
