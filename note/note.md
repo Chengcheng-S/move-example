@@ -210,3 +210,57 @@ address 0x40{
 ```
 
 ## move prove
+link https://github.com/move-language/move/blob/main/language/move-prover/doc/user/install.md
+
+`move prove`  Automated tool for Moves Lang smart contract validation
+work flow ,
+`move`--> `move parser` -->`move compiler` --bytecode--> `prover object model` ---> `Boogle Translator` ---> `Boogle` ---> `Z3 SMT solver` ---> `SMT modle`---> `Boogle result analyzer`---> `Diagnosis` 
+
+move porve accepts a Move source file, compiles it, and converts it to the validator object model by specification, The model will be translated into an intermediate language called Boogie. This Boogie code is passed into the Boogie validation system, which performs a "verification condition generation" of the input. This validation condition (VC) is passed into an automated theorem prove called Z3.
+After the VC is passed into the Z3 program, the validator checks whether the SMT formula is not satisfied. If so, it means that the specification is valid. Otherwise, a model that satisfies the conditions is generated and converted back to the Boogie format for the publication of a diagnostic report. The diagnostic report then reverts to a source-level error similar to the standard compiler error.
+
+
+MSL (move specification language) 
+```move
+address 0x40{
+    module A{
+        fun xxx(){}
+
+        spec xxx{
+            ///verify xxx work
+        }
+    }
+}
+```
+### aborts_if
+`aborts_if` defines a function that should be terminated if a certain condition is met, and an abort in the smart contract causes the entire transaction to be rolled back
+```move
+...
+const P64: u128 = 0x10000000000000000;
+
+spec fun value_of_U256(a: U256): num {
+    a.v0 + 
+    a.v1 * P64 + 
+    a.v2 * P64 * P64 + 
+    a.v3 * P64 * P64 * P64
+}
+
+spec add {
+    aborts_if value_of_U256(a) + value_of_U256(b) >= P64 * P64 * P64 * P64;
+}
+...
+```
+Functions can be called in spec code blocks. But the callee must be an MSL function or a `pure Move function.` The pure Move function is one that `does not modify global variables` or uses statements and features that are supported by MSL.
+
+### aborts_if false
+aborts_if false can have a function never terminate
+```move
+spec critical_function {
+    aborts_if false;
+}
+```
+### ensure
+Ensure that a state is acknowledged at the end of the function run.
+
+
+

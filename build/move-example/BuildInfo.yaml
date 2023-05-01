@@ -5,8 +5,8 @@ compiled_package_info:
     std: "00000000000000000000000000000001"
   source_digest: 6F3FF138384AA66963716CA973FF27E7A9328EFEBC1A1A693D6464044F3C5AAB
   build_flags:
-    dev_mode: false
-    test_mode: false
+    dev_mode: true
+    test_mode: true
     generate_docs: false
     generate_abis: false
     install_dir: ~
