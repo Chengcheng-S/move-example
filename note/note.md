@@ -257,10 +257,317 @@ aborts_if false can have a function never terminate
 ```move
 spec critical_function {
     aborts_if false;
+} 
+fun get(addr: address): &Counter acquires Counter {
+borrow_global<Counter>(addr)
+}
+spec get {
+aborts_if !exists<Counter>(addr) with EXECUTION_FAILURE;
+}
+
+```
+### aborts_with
+The aborts_with condition allows specifying with which codes a function can abort, independent under which condition.
+```move
+fun get_one_off(addr: address): u64 {
+    aborts(exists<Counter>(addr), 3);
+    borrow_global<Counter>(addr).value - 1
+}
+spec get_one_off {
+    aborts_with 3, EXECUTION_FAILURE;
 }
 ```
+
+### requires 
+The requires condition is a spec block member which postulates a pre-condition for a function. The prover will produce verification errors for functions which are called with violating pre-conditions.
+```move
+spec increment {
+    requires global<Counter>(a).value < 255;
+}
+```
+
 ### ensure
 Ensure that a state is acknowledged at the end of the function run.
 
+```move
+fun increment(counter: &mut u64) { *counter = *counter + 1 }
+spec increment {
+   ensures counter == old(counter) + 1;
+}
+
+fun increment_R(addr: address) {
+    let r =  borrow_global_mut<R>(addr);
+    r.value = r.value + 1;
+}
+spec increment_R {
+    ensures global<R>(addr).value == old(global<R>(addr).value) + 1;
+}
+
+```
+
+```move
+address 0x40{
+    module C{
+
+        struct A has drop{
+            a:u64,
+            b:u64,
+        }
+
+        spec A{
+            // b the second elem at A, as a bv type 
+            pragma bv = b"1";
+        }
+
+        public fun foo_generic<T>(i:T):T{
+            i
+        }
+        
+        spec foo_generic{
+            pragma bv = b"0";
+            pragma bv_ret = b"0";
+        }
+
+        public fun test(i:A):u64{
+            let x = foo_generic(i.b);
+            x^x 
+        }
+
+        spec test{
+            ensures result ==(0  as u64);
+        }
+
+    }
+}
+```
+
+### modifies
+The modifies condition is used to provide permissions to a function to modify global storage.The annotation itself comprises a list of global access expressions. It is specifically used together with opaque function specifications.
+```move
+address 0x40{
+module C{
+    struct P has key{
+        x:u64
+    }
+
+    fun mutate_at(addr:address) acquires P{
+        let s = borrow_global_mut<P>(addr);
+        s.x = 1
+    }
+    spec mutate_at{
+        modifies global<P>(addr);
+    }
+}
+}
+
+```
+
+In general, a global access expression has the form global<type_expr>(address_expr). The address-valued expression is evaluated in the pre-state of the annotated function.
+
+```move
+address 0x40{
+    module C{
+        struct P has key{
+            x:u64
+        }
+
+        fun mutate_at(addr:address) acquires P{
+            let p = borrow_global_mut<P>(addr);
+            p.x = 3
+        }
+        spec mutate_at{
+            pragma verify = true;
+            modifies global<P>(addr);
+        }
+
+        fun read_at(addr:address):u64 acquires P{
+            let p = borrow_global<P>(addr);
+            p.x
+        }
+
+        fun mutate_test(addr_one:address,addr_two:address):bool acquires P{
+            assert!(addr_one!=addr_two,43);
+            let x =read_at(addr_two);
+
+            mutate_at(addr_one);
+
+            x == read_at(addr_two)
+  
+        }
+        spec mutate_test{
+
+            pragma verify = true;
+
+            modifies global<P>(addr_one);
+            
+            ensures addr_one !=addr_two;
+        
+            ensures result==true;
+        }
+    }
+}
+```
+
+
+### Pragmas and Properties
+Pragmas and properties are a generic mechanism to influence interpretation of specifications,
+```move
+spec xxx{
+    pragma <name> = <literal>;
+}
+```
+
+property
+```move
+spec xxx{
+    <durective> [<name> = <literal>] <content>; // ensure,aborts_if,include  etc ...
+}
+```
+
+#### pragma Inheritance
+A pragma in a module spec block sets a value which applies to all other spec blocks in the module. **A pragma in a function or struct spec block can override this value for the function or struct. Furthermore, the default value of some pragmas can be defined via the prover configuration**.
+
+
+```move
+spec module {
+    pragma verify = false; // By default, do not verify specs in this module ...
+}
+
+spec increment {
+    pragma verify = true; // ... but do verify this function.
+    ...
+}
+```
+
+General Pragmas and Properties
+A number of pragmas control general behavior of verification. Those are listed in the table below.
+- `verify` : turn on the verification
+- `intrinsic` : Marks a function to **skip the Move implementation** and **use a prover native implementation**. This makes a function behave like a native function even if it not so in Move.
+- `timeout`: Sets a timeout (in seconds) for function or module. Overrides the timeout provided by command line flags.
+- `verify_duration_estimate`: 	Sets an estimate (in seconds) for how long the verification of function takes. If the configured timeout is less than this value, verification will be skipped.
+- `seed`: Sets a random seed for function or module. Overrides the seed provided by command line flags
+-  [`deactivated`] : **control general behavior of verification**,Excludes the associated condition from verification.
+
+### helper functions
+```move
+spec fun exists_balance<Currency>(a: address): bool { exists<Balance<Currency>>(a) }
+```
+helper functions can be generic. Moreover, they can **access global state.**
+
+tip: expression `old(..)` is **not allowed** within the definition of a helper function.
+
+
+### Axioms and uninterpreted function
+
+
+```move
+spec fun someting(x:num):num;
+```
+
+```move
+spec xxx{
+    axioms forall x:num:sometiong(x) == x+1;
+}
+```
+
+> Axiom should be used with care as they can introduce unsoundness in the specification logic via contradicting assumptions.
+> The Move prover supports a smoke test for detecting unsoundness via the --check-inconsistency flag.
+
+
+### invariant
+The invariant condition can be applied on structs and on global level.
+
+```move
+spec increment{
+    invariant global<Counter>(a).value <128;
+}
+```
+```move
+spec increment {
+    requires global<Counter>(a).value < 128;
+    ensures global<Counter>(a).value < 128;
+}
+```
+
+### struct invariant
+When the invariant condition is applied to a struct, it expresses a well-formedness property of the struct data. Any instance of this struct which is currently not mutated will satisfy this property
+```move
+spec Counter{
+    invariant value < 128;
+}
+```
+
+### Schemas
+means for structuring specifications by grouping properties together.
+```move
+spec schema IncrementAborts {
+    a: address;
+    aborts_if !exists<Counter>(a);
+    aborts_if global<Counter>(a).value == 255;
+}
+
+spec increment {
+    include IncrementAborts;
+}
+```
+Each schema may declare a number of typed variable names and a list of conditions over those variables. All supported condition types can be used in schemas. The schema can then be included in another spec block:
+
+- If that spec block is for a function or a struct, all variable names the schema declares must be matched against existing names of compatible type in the context.
+- If a schema is included in another schema, existing names are matched and must have the same type, but non-existing names will be added as new declarations to the inclusion context.
+
+#### schema expressions
+- `P==> SchemaExp` all conditions in the schema will be prefixed with P ==> ... Conditions which are not based on boolean expressions will be rejected.
+- `if (p) SchemaExp1 else SchemaExp2`
+- `SchemaExp1 && SchemaExp2` 
+
+#### apply
+`apply Schema to FunctionPattern, .. except FunctionPattern, ...`
+>Schema can be a schema name or a schema name plus formal type arguments. 
+> FunctionPatterns consists of an optional visibility modifier public or internal (if not provided, both visibilities will match), 
+> a name pattern in the style of a shell file pattern ( e.g. *, foo*, foo*bar, etc.) , and finally an optional type argument list. All type arguments provided to Schema must be bound in this list and vice versa.
+
+```move
+spec schema Unchanged {
+    let resource = global<R>(ADDR):
+    ensures resource == old(resource);
+}
+
+spec module {
+    // Enforce Unchanged for all functions except the initialize function.
+    apply Unchanged to * except initialize;
+}
+```
+
+### opaque 
+With the pragma opaque, **a function is declared to be solely defined by its specification at caller sides.** In contrast, if this pragma is not provided, then the function's implementation will be used as the basis to verify the caller.
+```move
+spec increment{
+    pragma opaque;
+    ensures global<Counter>(a) == old(global<Counter>(a)) + 1;
+}
+```
+In general, opaque functions enable modular verification, as they abstract from the implementation of functions, resulting in much faster verification.
+
+If an opaque function modifies state, it is advised to use the modifies condition in its specification. If this is omitted, verification of the state changes will fail.
+
+### Abstract
+The [abstract] property allow to specify a function such that an abstract semantics is used at the caller side which is different from the actual implementation. 
+This is useful if the implementation is too complex for verification, and an abstract semantics is sufficient for verification goals. The [concrete] property, in turn, allows to still specify conditions which are verified against the implementation, but not used at the caller side.
+
+```move
+fun hash(v: vector<u8>): u64 {
+    <<sum up values>>(v)
+}
+spec hash {
+    pragma opaque;
+    aborts_if false;
+    ensures [concrete] result == <<sum up values>>(v);
+    ensures [abstract] result == spec_hash_abstract(v);
+}
+spec fun abstract_hash(v: vector<u8>): u64; // uninterpreted function
+```
+Tip
+- the `abstract/concrete` properties should only be used with `opaque` specifications, but the prover will currently not generate an error if not.
+- the modifies clause does currently not support abstract/concrete. Also, if no modifies is given, the modified state will be computed from the implementation anyway, possibly conflicting with [abstract] properties.
 
 
